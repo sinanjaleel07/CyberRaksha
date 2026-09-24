@@ -12,25 +12,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Set up Java 17
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # 3. Set up Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
 
+      # 4. Install Gradle 9.3.1
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '9.3.1'
 
+      # 5. Extract the Android project from ZIP
       - name: Extract Android project
         run: |
           mkdir -p android-project
@@ -39,6 +44,7 @@ jobs:
           echo "=== Extracted project ==="
           find android-project -maxdepth 4 -type f | head -150
 
+      # 6. Find the Gradle project
       - name: Locate Android Gradle project
         run: |
           echo "Searching for Gradle project..."
@@ -60,6 +66,7 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
+      # 7. Build APK
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
@@ -73,11 +80,13 @@ jobs:
           echo "=== Building Debug APK ==="
           gradle --no-daemon assembleDebug
 
+      # 8. Find generated APK
       - name: Find APK
         run: |
           echo "=== APK files ==="
           find "$PROJECT_DIR" -type f -name "*.apk"
 
+      # 9. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
