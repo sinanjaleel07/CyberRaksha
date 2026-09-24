@@ -12,29 +12,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download repository files
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install Java 17
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Set up Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
 
-      # 4. Extract the Android Studio project
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Extract Android project
         run: |
           mkdir -p android-project
           unzip -q cyberraksha.zip -d android-project
 
+          echo "=== Extracted project ==="
+          find android-project -maxdepth 4 -type f | head -150
+
+      - name: Locate Android Gradle project
+        run: |
+          echo "Searching for Gradle project..."
+
+          SETTINGS=$(find android-project -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            | head -1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
+            echo "The ZIP may not contain a complete Android Studio project."
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Found Gradle project:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+
+          echo "=== Project files ==="
+          ls -la
+
+          echo "=== Gradle version ==="
+          gradle --version
+
+          echo "=== Building Debug APK ==="
+          gradle --no-daemon assembleDebug
+
+      - name: Find APK
+        run: |
+          echo "=== APK files ==="
+          find "$PROJECT_DIR" -type f -name "*.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CyberRaksha-debug-apk
+          path: |
+            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           echo "Extracted files:"
           find android-project -maxdepth 3 -type f | head -100
 
