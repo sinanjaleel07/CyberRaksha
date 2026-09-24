@@ -12,81 +12,157 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repository
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Set up Java 17
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Set up Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
 
-      # 4. Install Gradle 9.3.1
       - name: Install Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      # 5. Extract the Android project from ZIP
       - name: Extract Android project
         run: |
+          rm -rf android-project
           mkdir -p android-project
+
           unzip -q cyberraksha.zip -d android-project
 
-          echo "=== Extracted project ==="
-          find android-project -maxdepth 4 -type f | head -150
+          echo "=== Project structure ==="
+          find android-project -maxdepth 3 -type f | head -150
 
-      # 6. Find the Gradle project
-      - name: Locate Android Gradle project
+      - name: Locate Android project
         run: |
-          echo "Searching for Gradle project..."
-
           SETTINGS=$(find android-project -type f \
             \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
             | head -1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts was not found."
-            echo "The ZIP may not contain a complete Android Studio project."
+            echo "ERROR: Gradle settings file not found."
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Found Gradle project:"
+          echo "======================================"
+          echo "ANDROID PROJECT:"
           echo "$PROJECT_DIR"
+          echo "======================================"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      # 7. Build APK
+      - name: Create debug keystore
+        run: |
+          echo "======================================"
+          echo "Creating debug keystore"
+          echo "======================================"
+
+          mkdir -p "$PROJECT_DIR"
+
+          rm -f "$PROJECT_DIR/debug.keystore"
+
+          keytool -genkeypair \
+            -v \
+            -keystore "$PROJECT_DIR/debug.keystore" \
+            -storetype JKS \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+          echo ""
+          echo "=== VERIFY PROJECT KEYSTORE ==="
+
+          if [ -f "$PROJECT_DIR/debug.keystore" ]; then
+            echo "SUCCESS: $PROJECT_DIR/debug.keystore exists"
+            ls -lh "$PROJECT_DIR/debug.keystore"
+          else
+            echo "ERROR: Project debug.keystore was NOT created"
+            exit 1
+          fi
+
+      - name: Copy keystore to app folder
+        run: |
+          if [ -d "$PROJECT_DIR/app" ]; then
+            cp "$PROJECT_DIR/debug.keystore" "$PROJECT_DIR/app/debug.keystore"
+            echo "Copied keystore to app folder:"
+            ls -lh "$PROJECT_DIR/app/debug.keystore"
+          fi
+
+      - name: Verify signing files
+        run: |
+          echo "======================================"
+          echo "SIGNING FILE CHECK"
+          echo "======================================"
+
+          echo "Project:"
+          ls -lh "$PROJECT_DIR/debug.keystore"
+
+          if [ -f "$PROJECT_DIR/app/debug.keystore" ]; then
+            echo "App:"
+            ls -lh "$PROJECT_DIR/app/debug.keystore"
+          fi
+
+          echo ""
+          echo "Keystore contents:"
+          keytool -list \
+            -keystore "$PROJECT_DIR/debug.keystore" \
+            -storepass android
+
+      - name: Clean old Gradle cache
+        run: |
+          cd "$PROJECT_DIR"
+
+          rm -rf .gradle/configuration-cache
+          rm -rf .gradle/caches
+
+          echo "Old Gradle cache removed."
+
       - name: Build APK
         run: |
           cd "$PROJECT_DIR"
 
-          echo "=== Project files ==="
-          ls -la
+          echo "======================================"
+          echo "GRADLE VERSION"
+          echo "======================================"
 
-          echo "=== Gradle version ==="
           gradle --version
 
-          echo "=== Building Debug APK ==="
-          gradle --no-daemon assembleDebug
+          echo ""
+          echo "======================================"
+          echo "BUILDING APK"
+          echo "======================================"
 
-      # 8. Find generated APK
+          gradle \
+            --no-daemon \
+            --no-configuration-cache \
+            assembleDebug
+
       - name: Find APK
         run: |
-          echo "=== APK files ==="
-          find "$PROJECT_DIR" -type f -name "*.apk"
+          echo "======================================"
+          echo "SEARCHING FOR APK"
+          echo "======================================"
 
-      # 9. Upload APK
+          find "$PROJECT_DIR" \
+            -type f \
+            -name "*.apk" \
+            -print
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
